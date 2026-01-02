@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+    
+    tools {
+        maven 'maven'
+    }
+
+    environment {
+        AWS_REGION = "us-east-1"
+        AWS_ACCOUNT_ID = "540504555457"
+        ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/test/jen-proj"
+        IMAGE_NAME = "test/jen-proj"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scmGit(
+                    branches: [[name: '*/main']],
+                    extensions: [],
+                    userRemoteConfigs: [[
+                        credentialsId: 'Jen_GH_Int',
+                        url: 'git@github.com:ra603/jenkins-project.git'
+                    ]]
+                )
+            }
+        }
+
+        stage('Build JAR') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
+                sh 'docker images'
+            }
+        }
+
+        stage('Login to AWS ECR') {
+            steps {
+                sh '''
+                  aws ecr get-login-password --region ${AWS_REGION} \
+                  | docker login --username AWS --password-stdin \
+                  ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                '''
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                sh 'docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}'
+            }
+        }
+        
+        stage('Approval to Push Image') {
+            steps {
+                input message: "Approve pushing Docker image to AWS ECR?",
+                      ok: "Approve"
+            }
+        }
+
+
+        stage('Push Image to ECR') {
+            steps {
+                sh 'docker push ${ECR_REPO}:${IMAGE_TAG}'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Docker image pushed to ECR successfully"
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+    }
+}
