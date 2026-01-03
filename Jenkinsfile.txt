@@ -11,8 +11,9 @@ pipeline {
         ECR_REPO = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/test/jen-proj"
         IMAGE_NAME = "test/jen-proj"
         IMAGE_TAG = "${BUILD_NUMBER}"
+        SONAR_LOGIN = credentials('sonarqube_Jen_Int')
     }
-
+        
     stages {
 
         stage('Checkout') {
@@ -33,6 +34,16 @@ pipeline {
                 sh 'mvn clean package -DskipTests'
             }
         }
+        
+         stage('SonarQube Analysis') {
+                steps {
+                    // Use Jenkins SonarQube Scanner plugin
+                    withSonarQubeEnv('SonarQube') {
+                        sh 'mvn sonar:sonar -Dsonar.projectKey=spring-boot-app -Dsonar.login=$SONAR_LOGIN'
+                    }
+                }
+            }   
+
 
         stage('Build Docker Image') {
             steps {
@@ -57,14 +68,6 @@ pipeline {
             }
         }
         
-        stage('Approval to Push Image') {
-            steps {
-                input message: "Approve pushing Docker image to AWS ECR?",
-                      ok: "Approve"
-            }
-        }
-
-
         stage('Push Image to ECR') {
             steps {
                 sh 'docker push ${ECR_REPO}:${IMAGE_TAG}'
@@ -81,3 +84,11 @@ pipeline {
         }
     }
 }
+
+
+
+
+
+
+
+
